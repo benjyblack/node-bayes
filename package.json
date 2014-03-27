@@ -1,0 +1,20 @@
+{
+  "name": "node-bayes",
+  "description": "Bayes classifier for NodeJS",
+  "version": "0.0.1",
+  "private": false,
+  "author": "Ben Black",
+  "repository": {
+    "type": "git",
+    "url": "http://github.com/benjyblack/node-bayes"
+  },
+  "engines": {
+    "node": "0.10.x",
+    "npm": "1.3.x"
+  },
+  "dependencies": {
+    "winston": "~0.7.3",
+    "csv": "~0.3.7",
+    "lodash": "~2.4.1"
+  }
+}
