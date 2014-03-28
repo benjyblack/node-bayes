@@ -7,15 +7,19 @@ var bayes = require('./optimal-bayes'),
 	_ = require('lodash');
 
 
-var fileName;
-if (process.argv.length <= 2) {
-	winston.error('Filename argument required');
+var fileName, categoryToCompare;
+if (process.argv.length <= 3) {
+	winston.error('Filename and class arguments required');
 	return;
 }
 else if (process.argv[1] === 'debug') {
 	fileName = process.argv[3];
+	categoryToCompare = process.argv[4];
 }
-else fileName = process.argv[2];
+else {
+	fileName = process.argv[2];
+	categoryToCompare = process.argv[3];
+}
 
 var headerline = [];
 var dataSet = [];
@@ -51,12 +55,25 @@ csv()
 		// grab categories
 		var categories = getCategories(dataSet);
 
-		// create a partition for each category
+		if (categories.indexOf(categoryToCompare) === -1) {
+			winston.error('Given class does not exist.');
+			return;
+		}
+
+
+		// Assembled categoryToCompare partition
+		partitions[categoryToCompare] = { data: [], meanVector: {} };
+		partitions[categoryToCompare].data = getAllDataForCategory(trainingSet, categoryToCompare);
+		partitions[categoryToCompare].meanVector =  getMeanVector(partitions[categoryToCompare].data);
+
+		// Assemble other partition
+		partitions.other = { data: [], meanVector: {} };
 		categories.forEach(function(category) {
-			partitions[category] = { data: [], meanVector: {} };
-			partitions[category].data = getAllDataForCategory(trainingSet, category);
-			partitions[category].meanVector =  getMeanVector(partitions[category].data);
+			if (category !== categoryToCompare) {
+				partitions.other.data = partitions.other.data.concat(getAllDataForCategory(trainingSet, category));
+			}
 		});
+		partitions.other.meanVector =  getMeanVector(partitions.other.data);
 	})
 	.on('error', function(error){
 		winston.error('Error parsing CSV file: ' + error.message );
@@ -87,13 +104,11 @@ var getAllDataForCategory = function(dataSet, category) {
 	dataSet.forEach(function(data) {
 		if (data.category === category) {
 			// trim off the last field, the category name
-			// delete data.category;
+			delete data.category;
 
 			dataForCategory.push(data);
 		}
 	});
-
-	if (dataForCategory.length === 0) debugger;
 
 	return dataForCategory;
 };
