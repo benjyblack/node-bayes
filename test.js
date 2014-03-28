@@ -45,8 +45,10 @@ csv()
 		}
 	})
 	.on('end', function(){
-		// initialize classifier
-		var classifer = bayes();
+		var c;
+
+		// shuffle dataSet
+		dataSet = shuffle(dataSet);
 
 		// initialize data sets
 		var trainingSet = getTrainingSet(dataSet);
@@ -79,14 +81,48 @@ csv()
 		partitions.other.meanVector =  builMeanVector(partitions.other.data);
 		partitions.other.covarianceMatrix = buildCovarianceMatrix(partitions.other, k);
 
-		var c = classify(partitions[categoryToCompare], partitions.other, testingSet[0]);
+		var numCorrect = 0;
+		var numWrong = 0;
 
-		if (c > 0) winston.info("This belongs to " + categoryToCompare + "!");
-		else winston.info("This does NOT belong to " + categoryToCompare + "!");
+		testingSet.forEach(function(dataPoint) {
+			c = classify(partitions[categoryToCompare], partitions.other, dataPoint);
+
+			if (c > 0) {
+				if (dataPoint.category === categoryToCompare) numCorrect++;
+				else numWrong++;
+			}
+			else {
+				if (dataPoint.category !== categoryToCompare) numCorrect++;
+				else numWrong++;
+			}
+		});
+
+		winston.info('NumCorrect: ' + numCorrect + ', NumWrong: ' + numWrong + ', Percent: ' + numCorrect/testingSet.length*100 + '%');
 	})
 	.on('error', function(error){
 		winston.error('Error parsing CSV file: ' + error.message );
 	});
+
+var shuffle = function (array) {
+  var currentIndex = array.length,
+    temporaryValue,
+    randomIndex;
+
+  // While there remain elements to shuffle...
+  while (0 !== currentIndex) {
+
+    // Pick a remaining element...
+    randomIndex = Math.floor(Math.random() * currentIndex);
+    currentIndex -= 1;
+
+    // And swap it with the current element.
+    temporaryValue = array[currentIndex];
+    array[currentIndex] = array[randomIndex];
+    array[randomIndex] = temporaryValue;
+  }
+
+  return array;
+};
 
 var getCategories = function(dataSet) {
 	var categories = [];
@@ -183,8 +219,6 @@ var classify = function(A, B, dataPoint) {
 		}
 	}
 
-	// ln(det(covA)) - ln(det(covB)) + transpose((dataPoint-meanB)
-
 	var firstPart = math.log(math.det(A.covarianceMatrix), math.E);
 	var secondPart = math.log(math.det(B.covarianceMatrix), math.E);
 	
@@ -200,6 +234,8 @@ var classify = function(A, B, dataPoint) {
 
 	// final calculation, finally
 	c = math.eval("firstPart - secondPart + thirdPart - fourthPart", { firstPart: firstPart, secondPart: secondPart, thirdPart: thirdPart, fourthPart: fourthPart });
+
+	c = c._data[0][0];
 
 	return c;
 };
