@@ -1,12 +1,10 @@
+/*jslint node: true */
 'use strict';
 
-var bayes = require('./optimal-bayes'),
+var bayes = require('./bayes'),
 	winston = require('winston'),
 	csv = require('csv'),
-	fs = require('fs'),
-	_ = require('lodash'),
-	mathjs = require('mathjs'),
-	math = mathjs();
+	_ = require('lodash');
 
 
 var fileName, categoryToCompare;
@@ -45,47 +43,45 @@ csv()
 		}
 	})
 	.on('end', function(){
-		var c;
 
 		// shuffle dataSet
 		dataSet = shuffle(dataSet);
 
-		// initialize data sets
-		var trainingSet = getTrainingSet(dataSet);
-		var testingSet = getTestingSet(dataSet);
-
-		var partitions = {};
-
-		// grab categories
+		// get all categories
 		var categories = getCategories(dataSet);
-		var k = getK(dataSet);
 
+		// check to make sure the primary category entered from command line is actually one of the categories
 		if (categories.indexOf(categoryToCompare) === -1) {
 			winston.error('Given class does not exist.');
 			return;
 		}
 
-		// Assembled categoryToCompare partition
-		partitions[categoryToCompare] = { data: [], meanVector: {} };
-		partitions[categoryToCompare].data = getAllDataForCategory(trainingSet, categoryToCompare);
-		partitions[categoryToCompare].meanVector =  builMeanVector(partitions[categoryToCompare].data);
-		partitions[categoryToCompare].covarianceMatrix = buildCovarianceMatrix(partitions[categoryToCompare], k);
+		// initialize data sets
+		var trainingSet = dataSet.slice(0,dataSet.length/2);
+		var testingSet = dataSet.slice(dataSet.length/2, dataSet.length);
 
-		// Assemble other partition
-		partitions.other = { data: [], meanVector: {} };
+		// get the data for the primary category and for the secondary category
+		var categoryToCompareData = getAllDataForCategory(trainingSet, categoryToCompare);
+		
+		var otherCategoryData = [];
 		categories.forEach(function(category) {
 			if (category !== categoryToCompare) {
-				partitions.other.data = partitions.other.data.concat(getAllDataForCategory(trainingSet, category));
+				otherCategoryData = otherCategoryData.concat(getAllDataForCategory(trainingSet, category));
 			}
 		});
-		partitions.other.meanVector =  builMeanVector(partitions.other.data);
-		partitions.other.covarianceMatrix = buildCovarianceMatrix(partitions.other, k);
+
+		// initialize classifier
+		var classifier = bayes();
+
+		// teach the classifier about the data
+		classifier.teachPrimaryCategory(categoryToCompareData);
+		classifier.teachSecondaryCategory(otherCategoryData);
 
 		var numCorrect = 0;
 		var numWrong = 0;
 
 		testingSet.forEach(function(dataPoint) {
-			c = classify(partitions[categoryToCompare], partitions.other, dataPoint);
+			var c = classifier.classify(dataPoint);
 
 			if (c > 0) {
 				if (dataPoint.category === categoryToCompare) numCorrect++;
@@ -135,20 +131,6 @@ var getCategories = function(dataSet) {
 	return categories;
 };
 
-var getK = function(dataSet) {
-	var sample = dataSet[0];
-	// subtract 1 because one of the data points is the category itself
-	return Object.keys(sample).length - 1;
-};
-
-var getTrainingSet = function(dataSet) {
-	return dataSet.slice(0,dataSet.length/2);
-};
-
-var getTestingSet = function(dataSet) {
-	return dataSet.slice(dataSet.length/2, dataSet.length);
-};
-
 var getAllDataForCategory = function(dataSet, category) {
 	var dataForCategory = [];
 
@@ -168,74 +150,4 @@ var getAllDataForCategory = function(dataSet, category) {
 	});
 
 	return dataForCategory;
-};
-
-var builMeanVector = function(dataSet) {
-	var vector = [];
-
-	// sum all data point categories
-	dataSet.forEach(function(dataPoint) {
-		for (var i = 0; i < dataPoint.length; i++) {
-			if (typeof(vector[i]) === 'undefined') vector[i] = 0;
-			vector[i] += Number(dataPoint[i]);
-		}
-	});
-
-	// average them out
-	for (var i = 0; i < vector.length; i++)
-	{
-		vector[i] /= dataSet.length;
-	}
-
-	return vector;
-};
-
-var buildCovarianceMatrix = function(partition, k) {
-	var covarianceMatrix = math.zeros(k,k);
-
-	// create sum matrix
-	partition.data.forEach(function(dataPoint) {
-		var subtractedMean = math.eval('[dataPoint - meanVector]', { dataPoint: dataPoint, meanVector: partition.meanVector });
-		var transpose = math.transpose(subtractedMean);
-		var matrix = math.multiply(transpose, subtractedMean);
-		covarianceMatrix = math.add(covarianceMatrix, matrix);
-	});
-
-	// divide by n-1
-	covarianceMatrix = covarianceMatrix.map(function (value, index, matrix) {
-		return math.divide(value, partition.data.length - 1);
-	});
-
-	return covarianceMatrix;
-};
-
-var classify = function(A, B, dataPoint) {
-	var c = 0;
-	var dataPointVector = [];
-
-	for (var key in dataPoint) {
-		if (key !== 'category') {
-			dataPointVector.push(Number(dataPoint[key]));
-		}
-	}
-
-	var firstPart = math.log(math.det(A.covarianceMatrix), math.E);
-	var secondPart = math.log(math.det(B.covarianceMatrix), math.E);
-	
-	var firstPartOfThirdPart = math.eval("[vector]", { vector: math.subtract(dataPointVector, B.meanVector) });
-	var secondPartOfThirdPart = math.inv(B.covarianceMatrix);
-	var thirdPartOfThirdPart = math.eval("[vector]'", { vector: math.subtract(dataPointVector, B.meanVector) });
-	var thirdPart = math.multiply(math.multiply(firstPartOfThirdPart, secondPartOfThirdPart), thirdPartOfThirdPart);
-
-	var firstPartOfFourthPart = math.eval("[vector]", { vector: math.subtract(dataPointVector, A.meanVector) });
-	var secondPartOfFourthPart = math.inv(A.covarianceMatrix);
-	var thirdPartOfFourthPart = math.eval("[vector]'", { vector: math.subtract(dataPointVector, A.meanVector) });
-	var fourthPart = math.multiply(math.multiply(firstPartOfFourthPart, secondPartOfFourthPart), thirdPartOfFourthPart);
-
-	// final calculation, finally
-	c = math.eval("firstPart - secondPart + thirdPart - fourthPart", { firstPart: firstPart, secondPart: secondPart, thirdPart: thirdPart, fourthPart: fourthPart });
-
-	c = c._data[0][0];
-
-	return c;
 };
