@@ -66,8 +66,8 @@ csv()
 		// Assembled categoryToCompare partition
 		partitions[categoryToCompare] = { data: [], meanVector: {} };
 		partitions[categoryToCompare].data = getAllDataForCategory(trainingSet, categoryToCompare);
-		partitions[categoryToCompare].meanVector =  getMeanVector(partitions[categoryToCompare].data);
-		partitions[categoryToCompare].covarianceMatrix = buildCovarianceMatrix(partitions[categoryToCompare]);
+		partitions[categoryToCompare].meanVector =  builMeanVector(partitions[categoryToCompare].data);
+		partitions[categoryToCompare].covarianceMatrix = buildCovarianceMatrix(partitions[categoryToCompare], k);
 
 		// Assemble other partition
 		partitions.other = { data: [], meanVector: {} };
@@ -76,10 +76,13 @@ csv()
 				partitions.other.data = partitions.other.data.concat(getAllDataForCategory(trainingSet, category));
 			}
 		});
-		partitions.other.meanVector =  getMeanVector(partitions.other.data);
-		partitions.other.covarianceMatrix = buildCovarianceMatrix(partitions.other);
+		partitions.other.meanVector =  builMeanVector(partitions.other.data);
+		partitions.other.covarianceMatrix = buildCovarianceMatrix(partitions.other, k);
 
+		var c = classify(partitions[categoryToCompare], partitions.other, testingSet[0]);
 
+		if (c > 0) winston.info("This belongs to " + categoryToCompare + "!");
+		else winston.info("This does NOT belong to " + categoryToCompare + "!");
 	})
 	.on('error', function(error){
 		winston.error('Error parsing CSV file: ' + error.message );
@@ -121,7 +124,7 @@ var getAllDataForCategory = function(dataSet, category) {
 			var vector = [];
 
 			for (var item in data) {
-				vector.push(data[item]);
+				vector.push(Number(data[item]));
 			}
 
 			dataForCategory.push(vector);
@@ -131,7 +134,7 @@ var getAllDataForCategory = function(dataSet, category) {
 	return dataForCategory;
 };
 
-var getMeanVector = function(dataSet) {
+var builMeanVector = function(dataSet) {
 	var vector = [];
 
 	// sum all data point categories
@@ -151,18 +154,52 @@ var getMeanVector = function(dataSet) {
 	return vector;
 };
 
-var buildCovarianceMatrix = function(partition) {
-	var covarianceMatrix = math.eval('zeros(k,k)', { k: k });
+var buildCovarianceMatrix = function(partition, k) {
+	var covarianceMatrix = math.zeros(k,k);
 
+	// create sum matrix
+	partition.data.forEach(function(dataPoint) {
+		var subtractedMean = math.eval('[dataPoint - meanVector]', { dataPoint: dataPoint, meanVector: partition.meanVector });
+		var transpose = math.transpose(subtractedMean);
+		var matrix = math.multiply(transpose, subtractedMean);
+		covarianceMatrix = math.add(covarianceMatrix, matrix);
+	});
 
-	// partition.data.forEach(function(dataPoint) {
-
-	// });
+	// divide by n-1
+	covarianceMatrix = covarianceMatrix.map(function (value, index, matrix) {
+		return math.divide(value, partition.data.length - 1);
+	});
 
 	return covarianceMatrix;
 };
 
-var subtractVectors = function(a, b) {
-	var result = {};
+var classify = function(A, B, dataPoint) {
+	var c = 0;
+	var dataPointVector = [];
 
+	for (var key in dataPoint) {
+		if (key !== 'category') {
+			dataPointVector.push(Number(dataPoint[key]));
+		}
+	}
+
+	// ln(det(covA)) - ln(det(covB)) + transpose((dataPoint-meanB)
+
+	var firstPart = math.log(math.det(A.covarianceMatrix), math.E);
+	var secondPart = math.log(math.det(B.covarianceMatrix), math.E);
+	
+	var firstPartOfThirdPart = math.eval("[vector]", { vector: math.subtract(dataPointVector, B.meanVector) });
+	var secondPartOfThirdPart = math.inv(B.covarianceMatrix);
+	var thirdPartOfThirdPart = math.eval("[vector]'", { vector: math.subtract(dataPointVector, B.meanVector) });
+	var thirdPart = math.multiply(math.multiply(firstPartOfThirdPart, secondPartOfThirdPart), thirdPartOfThirdPart);
+
+	var firstPartOfFourthPart = math.eval("[vector]", { vector: math.subtract(dataPointVector, A.meanVector) });
+	var secondPartOfFourthPart = math.inv(A.covarianceMatrix);
+	var thirdPartOfFourthPart = math.eval("[vector]'", { vector: math.subtract(dataPointVector, A.meanVector) });
+	var fourthPart = math.multiply(math.multiply(firstPartOfFourthPart, secondPartOfFourthPart), thirdPartOfFourthPart);
+
+	// final calculation, finally
+	c = math.eval("firstPart - secondPart + thirdPart - fourthPart", { firstPart: firstPart, secondPart: secondPart, thirdPart: thirdPart, fourthPart: fourthPart });
+
+	return c;
 };
