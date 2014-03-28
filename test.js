@@ -7,18 +7,20 @@ var bayes = require('./bayes'),
 	_ = require('lodash');
 
 
-var fileName, categoryToCompare;
-if (process.argv.length <= 3) {
-	winston.error('Filename and class arguments required');
+var fileName, categoryToCompare, bayesType;
+if (process.argv.length <= 4) {
+	winston.error('This format is required: node [debug] <filename> <primary-category> <bayes-type>');
 	return;
 }
 else if (process.argv[1] === 'debug') {
 	fileName = process.argv[3];
 	categoryToCompare = process.argv[4];
+	bayesType = process.argv[5];
 }
 else {
 	fileName = process.argv[2];
 	categoryToCompare = process.argv[3];
+	bayesType = process.argv[4];
 }
 
 var headerline = [];
@@ -76,6 +78,8 @@ csv()
 		// teach the classifier about the data
 		classifier.teachPrimaryCategory(categoryToCompareData);
 		classifier.teachSecondaryCategory(otherCategoryData);
+
+		classifier.naivify();
 
 		var numCorrect = 0;
 		var numWrong = 0;

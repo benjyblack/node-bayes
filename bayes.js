@@ -1,7 +1,9 @@
+/*jslint node: true */
 'use strict';
 
 var	mathjs = require('mathjs'),
-	math = mathjs();
+	math = mathjs(),
+	winston = require('winston');
 
 module.exports = function() {
 	return new Bayes();
@@ -73,6 +75,10 @@ Bayes.prototype.classify = function(dataPoint) {
 	var A = this.categories.A;
 	var B = this.categories.B;
 
+	if (typeof(A) === 'undefined' || typeof(B) === 'undefined') {
+		winston.error('Both PRIMARY and SECONDARY categories must be taught before classifying');
+	}
+
 	var c = 0;
 	var dataPointVector = [];
 
@@ -102,3 +108,25 @@ Bayes.prototype.classify = function(dataPoint) {
 
 	return c;
 };
+
+Bayes.prototype.naivify = function() {
+	var A = this.categories.A;
+	var B = this.categories.B;
+
+	if (typeof(A) === 'undefined' || typeof(B) === 'undefined') {
+		winston.error('Both PRIMARY and SECONDARY categories must be taught before naivifying');
+	}
+
+	var cats = [A,B];
+
+	cats.forEach(function(category) {
+		var size = category.covarianceMatrix.size()[0];
+
+		for (var i=0;i<size;i++) {
+			for(var j=0;j<size;j++) {
+				if (i === j) continue;
+				else category.covarianceMatrix._data[i][j] = 0;
+			}
+		}
+	});
+}
