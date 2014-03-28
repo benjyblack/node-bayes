@@ -4,104 +4,94 @@
 var bayes = require('./bayes'),
 	winston = require('winston'),
 	csv = require('csv'),
-	_ = require('lodash');
+	_ = require('lodash'),
+	prompt = require('prompt');
 
+prompt.get(['filename', 'primary-category', 'bayes-type'], function(err, result) {
+	var primaryCategory = result['primary-category'];
+	var bayesType = result['bayes-type'];
 
-var fileName, categoryToCompare, bayesType;
-if (process.argv.length <= 4) {
-	winston.error('This format is required: node [debug] <filename> <primary-category> <bayes-type>');
-	return;
-}
-else if (process.argv[1] === 'debug') {
-	fileName = process.argv[3];
-	categoryToCompare = process.argv[4];
-	bayesType = process.argv[5];
-}
-else {
-	fileName = process.argv[2];
-	categoryToCompare = process.argv[3];
-	bayesType = process.argv[4];
-}
+	var headerline = [];
+	var dataSet = [];
 
-var headerline = [];
-var dataSet = [];
+	// read in file
+	csv()
+		.from.path(__dirname + '/data/' + result.filename + '.csv', { delimeter: ',', escape: '' })
+		.on('record', function(row,index) {
+			var i;
+			var data = {};
 
-// read in file
-csv()
-	.from.path(__dirname + '/data/' + fileName + '.csv', { delimeter: ',', escape: '' })
-	.on('record', function(row,index) {
-		var i;
-		var data = {};
-
-		// First row will be the headerline
-		if (index === 0) {
-			for (i = 0; i < row.length; i++) headerline.push(row[i]);
-		}
-		else {
-			// Populate fields from csv
-			for (i = 0; i < row.length; i++) data[headerline[i]] = row[i];
-
-			dataSet.push(data);
-		}
-	})
-	.on('end', function(){
-
-		// shuffle dataSet
-		dataSet = shuffle(dataSet);
-
-		// get all categories
-		var categories = getCategories(dataSet);
-
-		// check to make sure the primary category entered from command line is actually one of the categories
-		if (categories.indexOf(categoryToCompare) === -1) {
-			winston.error('Given class does not exist.');
-			return;
-		}
-
-		// initialize data sets
-		var trainingSet = dataSet.slice(0,dataSet.length/2);
-		var testingSet = dataSet.slice(dataSet.length/2, dataSet.length);
-
-		// get the data for the primary category and for the secondary category
-		var categoryToCompareData = getAllDataForCategory(trainingSet, categoryToCompare);
-		
-		var otherCategoryData = [];
-		categories.forEach(function(category) {
-			if (category !== categoryToCompare) {
-				otherCategoryData = otherCategoryData.concat(getAllDataForCategory(trainingSet, category));
-			}
-		});
-
-		// initialize classifier
-		var classifier = bayes();
-
-		// teach the classifier about the data
-		classifier.teachPrimaryCategory(categoryToCompareData);
-		classifier.teachSecondaryCategory(otherCategoryData);
-
-		classifier.naivify();
-
-		var numCorrect = 0;
-		var numWrong = 0;
-
-		testingSet.forEach(function(dataPoint) {
-			var c = classifier.classify(dataPoint);
-
-			if (c > 0) {
-				if (dataPoint.category === categoryToCompare) numCorrect++;
-				else numWrong++;
+			// First row will be the headerline
+			if (index === 0) {
+				for (i = 0; i < row.length; i++) headerline.push(row[i]);
 			}
 			else {
-				if (dataPoint.category !== categoryToCompare) numCorrect++;
-				else numWrong++;
-			}
-		});
+				// Populate fields from csv
+				for (i = 0; i < row.length; i++) data[headerline[i]] = row[i];
 
-		winston.info('NumCorrect: ' + numCorrect + ', NumWrong: ' + numWrong + ', Percent: ' + numCorrect/testingSet.length*100 + '%');
-	})
-	.on('error', function(error){
-		winston.error('Error parsing CSV file: ' + error.message );
-	});
+				dataSet.push(data);
+			}
+		})
+		.on('end', function(){
+
+			// shuffle dataSet
+			dataSet = shuffle(dataSet);
+
+			// get all categories
+			var categories = getCategories(dataSet);
+
+			// check to make sure the primary category entered from command line is actually one of the categories
+			if (categories.indexOf(primaryCategory) === -1) {
+				winston.error('Given class does not exist.');
+				return;
+			}
+
+			// initialize data sets
+			var trainingSet = dataSet.slice(0,dataSet.length/2);
+			var testingSet = dataSet.slice(dataSet.length/2, dataSet.length);
+
+			// get the data for the primary category and for the secondary category
+			var primaryCategoryData = getAllDataForCategory(trainingSet, primaryCategory);
+			
+			var otherCategoryData = [];
+			categories.forEach(function(category) {
+				if (category !== primaryCategory) {
+					otherCategoryData = otherCategoryData.concat(getAllDataForCategory(trainingSet, category));
+				}
+			});
+
+			// initialize classifier
+			var classifier = bayes();
+
+			// teach the classifier about the data
+			classifier.teachPrimaryCategory(primaryCategoryData);
+			classifier.teachSecondaryCategory(otherCategoryData);
+
+			if (bayesType === 'naive')
+				classifier.naivify();
+
+			var numCorrect = 0;
+			var numWrong = 0;
+
+			testingSet.forEach(function(dataPoint) {
+				var c = classifier.classify(dataPoint);
+
+				if (c > 0) {
+					if (dataPoint.category === primaryCategory) numCorrect++;
+					else numWrong++;
+				}
+				else {
+					if (dataPoint.category !== primaryCategory) numCorrect++;
+					else numWrong++;
+				}
+			});
+
+			winston.info('NumCorrect: ' + numCorrect + ', NumWrong: ' + numWrong + ', Percent: ' + numCorrect/testingSet.length*100 + '%');
+		})
+		.on('error', function(error){
+			winston.error('Error parsing CSV file: ' + error.message );
+		});
+});
 
 var shuffle = function (array) {
   var currentIndex = array.length,
