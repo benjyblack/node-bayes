@@ -90,16 +90,8 @@ Bayes.prototype.classify = function(dataPoint) {
 
 	var firstPart = math.log(math.det(A.covarianceMatrix), math.E);
 	var secondPart = math.log(math.det(B.covarianceMatrix), math.E);
-	
-	var firstPartOfThirdPart = math.eval("[vector]", { vector: math.subtract(dataPointVector, B.meanVector) });
-	var secondPartOfThirdPart = math.inv(B.covarianceMatrix);
-	var thirdPartOfThirdPart = math.eval("[vector]'", { vector: math.subtract(dataPointVector, B.meanVector) });
-	var thirdPart = math.multiply(math.multiply(firstPartOfThirdPart, secondPartOfThirdPart), thirdPartOfThirdPart);
-
-	var firstPartOfFourthPart = math.eval("[vector]", { vector: math.subtract(dataPointVector, A.meanVector) });
-	var secondPartOfFourthPart = math.inv(A.covarianceMatrix);
-	var thirdPartOfFourthPart = math.eval("[vector]'", { vector: math.subtract(dataPointVector, A.meanVector) });
-	var fourthPart = math.multiply(math.multiply(firstPartOfFourthPart, secondPartOfFourthPart), thirdPartOfFourthPart);
+	var thirdPart = this.buildComplexPart(dataPointVector, B.meanVector, B.covarianceMatrix);
+	var fourthPart = this.buildComplexPart(dataPointVector, A.meanVector, A.covarianceMatrix);
 
 	// final calculation, finally
 	c = math.eval("firstPart - secondPart + thirdPart - fourthPart", { firstPart: firstPart, secondPart: secondPart, thirdPart: thirdPart, fourthPart: fourthPart });
@@ -130,3 +122,29 @@ Bayes.prototype.naivify = function() {
 		}
 	});
 }
+
+Bayes.prototype.buildComplexPart = function(dataPointVector, meanVector, covarianceMatrix) {
+	var firstPart = math.eval("[vector]", { vector: math.subtract(dataPointVector, meanVector) });
+	var secondPart;
+
+	try {
+		secondPart = math.inv(covarianceMatrix);
+	}
+	catch(err) {
+		secondPart = this.pseudoInverse(covarianceMatrix);
+	}
+	
+	var thirdPart = math.eval("[vector]'", { vector: math.subtract(dataPointVector, meanVector) });
+	return math.multiply(math.multiply(firstPart, secondPart), thirdPart);
+};
+
+Bayes.prototype.pseudoInverse = function(matrix) {
+  var inverse = math.transpose(matrix);
+  return this.dot(math.inv(this.dot(inverse,matrix)),inverse);
+};
+
+Bayes.prototype.dot = function(a,b) {
+	var n = 0, lim = Math.min(a.length,b.length);
+	for (var i = 0; i < lim; i++) n += a[i] * b[i];
+	return n;
+};

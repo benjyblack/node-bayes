@@ -15,7 +15,6 @@
   "dependencies": {
     "winston": "~0.7.3",
     "csv": "~0.3.7",
-    "lodash": "~2.4.1",
     "prompt": "~0.2.12"
   }
 }
