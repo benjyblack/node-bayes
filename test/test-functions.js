@@ -1,7 +1,7 @@
 /*jslint node: true */
 'use strict';
 
-var bayes = require('./bayes'),
+var bayes = require('../lib/bayes'),
 	winston = require('winston');
 
 var runClassifier = function(dataSet, primaryCategory, bayesType) {
