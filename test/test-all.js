@@ -3,7 +3,8 @@
 
 var winston = require('winston'),
 	csv = require('csv'),
-	testFunctions = require('./test-functions');
+	testFunctions = require('./test-functions'),
+	bayes = require('../lib/bayes');
 
 var files = [
 	{
@@ -21,7 +22,7 @@ var files = [
 	}
 ];
 
-var bayesTypes = ['optimal', 'naive'];
+var bayesTypes = ['optimal', 'naive', 'linear'];
 
 files.forEach(function (file) {
 	var headerline = [];
@@ -51,8 +52,50 @@ files.forEach(function (file) {
 			bayesTypes.forEach(function (bayesType) {
 				file.results[bayesType] = 0;
 				file.categories.forEach(function (primaryCategory) {
-					var result = testFunctions.runClassifier(dataSet, primaryCategory, bayesType);
-					file.results[bayesType] += result.percentCorrect;
+					// initialize classifier
+					var classifier = bayes();
+
+					var organizedData, sets;
+
+					// repeat for as long as our categories are empty
+					do {
+						dataSet = testFunctions.shuffle(dataSet);
+						sets = testFunctions.partitionSets(dataSet, 0, dataSet.length/2);
+
+						// get all categories
+						var categories = testFunctions.getCategories(dataSet);
+
+						organizedData = testFunctions.organizeData(sets.trainingSet, primaryCategory, categories);
+					} while(organizedData.primaryCategoryData.length === 0 || organizedData.secondaryCategoryData.length === 0);
+
+					// teach the classifier about the data
+					classifier.teachPrimaryCategory(organizedData.primaryCategoryData);
+					classifier.teachSecondaryCategory(organizedData.secondaryCategoryData);
+
+					if (bayesType === 'naive')
+						classifier.naivify();
+
+					var numCorrect = 0;
+					var numWrong = 0;
+
+					// Go through each data point in the testing set to see if our algorithm is correct
+					sets.testingSet.forEach(function(dataPoint) {
+						var c;
+
+						if (bayesType === 'linear') c= classifier.classifyLinear(dataPoint);
+						else c = classifier.classify(dataPoint);
+
+						if (c > 0) {
+							if (dataPoint.category === primaryCategory) numCorrect++;
+							else numWrong++;
+						}
+						else {
+							if (dataPoint.category !== primaryCategory) numCorrect++;
+							else numWrong++;
+						}
+					});
+
+					file.results[bayesType] += numCorrect/sets.testingSet.length*100;
 				});
 				winston.info('Algorithm: %s, Average percent: %d%', bayesType,file.results[bayesType]/file.categories.length);
 			});
